@@ -45,45 +45,48 @@ constexpr float kRampUpPerMs   = 1.15f;   // 0..max in ~0.7 s
 constexpr float kRampDownPerMs = 2.60f;   // down to 0 in ~0.3 s
 
 // --- Test speed limit ---
-// TEMPORARILY lowered while diagnosing the IS current reading. Will return to
-// 100% once the IS->amps scale is calibrated (needs an RC filter on IS lines).
-constexpr int16_t kTestSpeedLimit = static_cast<int16_t>(kPwmMax * 0.40f);
+// --- Default speed limit (PWM duty) ---
+// Max speed used by the final firmware (main). The motor_test tool lowers it at
+// runtime via setSpeedLimit(). Current sensing is clean (INA219), so 100% is OK.
+constexpr int16_t kTestSpeedLimit = static_cast<int16_t>(kPwmMax * 1.00f);
 
 // --- Control loop ---
 constexpr uint16_t kTickMs = 5;   // fixed 5 ms tick (software)
 
-// --- CurrentSensor (plan 5.3) ---
-// IBT-2 gives ~0.1 V/A on the IS line. ADC: 5V / 1024 = 4.887 mV/step.
-// This is a STARTING value - to be calibrated with an ammeter (plan test 3).
-// NOTE: with the RC filter (4.7k + 100nF) the zero reading is a stable offset
-// (~35 counts observed) and must be SUBTRACTED. The real signal from a small
-// free-running current (~0.2 A) is near the noise floor, so IS is only reliable
-// at larger currents (jam / end-stop). Calibrate kIsVoltsPerAmp under load.
-constexpr uint8_t  kCurrentOversample = 16;     // samples per averaged read
-constexpr uint8_t  kCurrentMedianN    = 5;      // median window over averaged reads
-constexpr uint16_t kIsZeroCounts      = 35;     // ADC counts at ~zero current (offset)
-constexpr float    kAdcVoltsPerStep   = 5.0f / 1024.0f;
-constexpr float    kIsVoltsPerAmp     = 0.100f; // TO BE CALIBRATED under load
+// --- CurrentSensor (INA219) ---
+// Current is read digitally from the INA219 (see INA219 section below). Only a
+// light EMA is applied in software; the INA219 reading is already clean.
 constexpr float    kCurrentEmaAlpha   = 0.20f;  // EMA filter (0..1), lower = smoother
 
 // Current protection master switch. Keep FALSE while free-running / uncalibrated
-// so the near-noise IS reading cannot trigger a false FAULT. Set TRUE once the
-// IS->amps scale and thresholds are calibrated under load (before desk mounting).
-constexpr bool     kCurrentProtectionEnabled = false;
+// so an unexpected reading cannot trigger a false FAULT. Set TRUE once the
+// thresholds are verified under load (before desk mounting).
+constexpr bool     kCurrentProtectionEnabled = true;
 
 // --- Protection thresholds (plan 5.4) ---
-// PSU max 8.33 A -> keep thresholds BELOW it so we trip before the PSU folds.
-// Motor stall ~19 A, but the PSU cannot deliver that. Free-running draw is low.
-constexpr uint16_t kBlankingMs        = 300;  // ignore current for first 300 ms
-constexpr float    kCurrentSustainedA = 5.0f; // sustained limit
+// Based on measured INA219 currents (free-running, 100% speed):
+//   cruise ~0.6-0.76 A; hard finger braking barely reached ~0.8 A (the gearbox
+//   masks load). Thresholds are set low so a real jam is still detected.
+constexpr uint16_t kBlankingMs        = 400;  // ignore current for first 400 ms (covers inrush)
+constexpr float    kCurrentSustainedA = 1.2f; // sustained limit
 constexpr uint16_t kSustainedMs       = 200;  // ... held for > 200 ms
-constexpr float    kCurrentInstantA   = 6.5f; // instantaneous limit
-constexpr uint32_t kMaxRunMs          = 5000; // max single-move time (test: 5 s)
+constexpr float    kCurrentInstantA   = 1.5f; // instantaneous limit
+constexpr uint8_t  kOcDebounceTicks   = 3;    // consecutive over-threshold ticks before fault
+constexpr uint32_t kMaxRunMs          = 0;    // run-time limit, 0 = disabled (final fw). Tools set their own.
 
 // --- Watchdog ---
 // WDTO_250MS enabled in code; reset every tick.
 
 // NOTE: height-sensor (VL53L0X) constants live with the archived module in
 // attic/height_sensor/. Removed from active config since no build uses them.
+
+// --- Current sensor: INA219 (I2C) ---
+// Replaces the noisy IBT-2 IS line. Standard module has a 0.1 ohm shunt ->
+// +-3.2 A range at the default PGA gain. That is enough for protection if the
+// normal running current stays below it; a reading at/above full scale is treated
+// as "too much current -> fault". Calibrate with an ammeter if needed.
+constexpr uint8_t kInaAddress     = 0x40;  // default; check with i2c_scan
+constexpr float   kInaShuntOhms   = 0.100f; // module shunt resistor
+constexpr float   kInaMaxCurrentA = 3.2f;   // full-scale with 0.1 ohm @ gain 8
 
 }  // namespace cfg

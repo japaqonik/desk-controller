@@ -3,6 +3,12 @@
 Arduino Nano (ATmega328P) + IBT-2 (BTS7960) + 12 V / 8 A PSU + VL53L0X-class distance sensor + 4 buttons.
 Position comes from the distance sensor only (no dead-reckoning). Current sensing is used for protection.
 
+> **Current scope (see section 13):** the implemented target is a *minimum build*
+> — manual up/down with overcurrent protection via an **INA219** (integrated and
+> working), and **no presets / no position sensing**. The distance-sensor work is
+> archived (range too short on the real floor). The original sections below (6–9)
+> and the appendix (section 12) describe deferred/future functionality.
+
 ---
 
 ## 1. Goals and phases
@@ -252,3 +258,189 @@ The desk is not moved by hand and the sensor is absolute, so no re-homing is nee
 - Which motor direction corresponds to "up" (one constant in `Config.h`).
 - Whether the IS signal is clean enough for protection (otherwise shunt / INA219).
 - Confirm how the mechanism behaves at its end stops (hard stop vs. clutch) before any stall testing.
+
+---
+
+## 12. Appendix: alternative position-sensing methods
+
+The main plan derives position from a distance sensor only. In practice the
+VL53L0X ranged only ~30–70 cm on the real floor (limited by surface
+reflectivity, not ambient light), which is short of the desk's travel. This
+appendix records alternatives so the position source can be swapped without
+touching the motor/button/protection layers. The idea is a `PositionSensor`
+module with a stable API (`position()`, `isValid()`, `ageMs()`), consumed by
+`MotionController`; only this module changes between methods.
+
+### 12.1 Options overview
+
+| Method | Type | Needs homing? | Light/floor sensitive? | Notes |
+|---|---|---|---|---|
+| VL53L0X distance (current) | absolute | no | yes (reflectivity) | range too short on this floor |
+| VL53L1X distance | absolute | no | yes (less) | ~4 m, drop-in: only `HeightSensor` changes |
+| Ultrasonic (MaxBotix) | absolute | no | no (acoustic) | immune to color; weak on soft/angled surfaces |
+| Rotary encoder (quadrature) | relative | yes | no | needs interrupt pins (conflicts with D2/D3 buttons) |
+| Magnetic encoder AS5600 (I2C) | abs. per turn | yes (multi-turn) | no | counts turns over full travel; no extra IRQ pins |
+| Linear/rotary potentiometer | absolute | no | no | mechanical coupling; wiper wear; limited range |
+| Run-time dead-reckoning | relative | yes, often | no | drifts; MVP only |
+
+### 12.2 Recommended alternative: encoder + current-based homing
+
+For this hardware (DC gearmotor, IBT-2, existing current sensing) the strongest
+alternative is a **shaft encoder for position** plus **homing against an end
+stop detected by current**:
+
+- **AS5600** (I2C) is preferred over a quadrature encoder because the Nano's
+  interrupt pins D2/D3 are already used by the UP/DOWN buttons. AS5600 is
+  absolute within one turn; over the full travel the firmware counts turns.
+- The end stop is found by driving into it and detecting the current rise
+  (reuses the protection sensor — ideally upgraded to INA219, see below). That
+  point is the zero reference; the encoder counts position from there.
+- Presets become stored encoder positions in non-volatile memory (same scheme
+  as section 8.3, with the field meaning "encoder position" instead of "mm").
+
+### 12.3 Persisting position without constant homing
+
+Assumption: the desk only moves via this firmware. Then position can be restored
+from storage at boot instead of homing every time — but the hard case is a
+**power loss during a move**.
+
+- **Store on stop only + "in-motion" flag:** write position when a move ends;
+  set an `in_motion` flag at move start, clear it at move end. On boot, if the
+  flag is still set, the last power-off was "dirty" (interrupted mid-move) →
+  position is uncertain → do a homing pass. Otherwise trust the stored value.
+  Minimal wear, homing only in the rare dirty case.
+- **Continuous storage (needs the right memory):** writing position every few
+  tens of ms would destroy the internal EEPROM (~100k cycles). Use **FRAM**
+  (I2C, e.g. MB85RC-series): effectively unlimited write cycles, instant writes.
+  Then a power loss costs only the last ~10–50 ms of movement (sub-millimeter),
+  with no wear. External EEPROM with wear-leveling is a cheaper, weaker option.
+- **Periodic / cyclic re-homing:** relative encoders drift (missed counts,
+  slip). Keep a **boot counter** in non-volatile memory and force a homing pass
+  every N starts (or every N move cycles, or once a day). This caps accumulated
+  error without homing on every boot. Combined with the dirty-flag check above,
+  the user rarely sees a homing move.
+- **Optional brown-out save:** detect the supply dropping (ADC divider or the
+  AVR brown-out detector) and write position in the last few ms before the bulk
+  capacitor drains (one EEPROM write ≈ 3.3 ms; FRAM is faster). Eliminates even
+  the dirty-case homing, but requires verifying the energy reserve after power
+  loss.
+
+### 12.4 Current sensing upgrade (enables protection and homing)
+
+The IBT-2 IS line proved too noisy at low current (free-running ~0.2 A sits near
+the ADC noise floor, even with an RC filter). An **INA219/INA226** (I2C
+shunt-based current/voltage monitor, address different from other I2C devices)
+would give a clean, calibrated current reading usable even at low current. This
+improves overcurrent protection and provides reliable end-stop detection for the
+homing scheme above. This matches the fallback already noted in section 5.3.
+
+### 12.5 Pin / bus implications
+
+- Quadrature encoders want D2/D3 (external interrupts), which are taken by
+  UP/DOWN. Prefer an **I2C** position source (AS5600) or remap the buttons.
+- AS5600, INA219 and a future VL53L1X all share the I2C bus (A4/A5) at distinct
+  addresses — budget for that if combining them.
+- A potentiometer needs one spare ADC pin (A0 and A3 are currently free).
+
+### 12.6 Distance-sensor technologies compared
+
+If position is derived from distance to the floor, these are the realistic
+sensor families. All "distance to floor" methods have a weak spot; none is
+perfect in a normal room.
+
+| Technology | Example | Immune to floor color / light? | Range | Integration | Notes |
+|---|---|---|---|---|---|
+| Optical ToF | VL53L0X / VL53L1X | no (reflectivity; sun adds IR) | 1.2 m / ~4 m | easy (I2C) | VL53L1X is a drop-in upgrade |
+| Optical triangulation | Sharp GP2Y0A | no | 0.1–1.5 m | easy (analog) | nonlinear, noisy; inferior to ToF |
+| 1D LiDAR | TF-Luna, TFmini | partly | several m | easy (UART/I2C) | robust, slight overkill |
+| Ultrasonic (basic) | HC-SR04 | yes for color, poor otherwise | ~4 m | easy | wide cone, soft surfaces absorb echo |
+| Ultrasonic (quality) | MaxBotix HRLV | yes for color | several m | medium | good on hard floor; carpet still weak |
+| mmWave radar | 24/60 GHz modules | **yes** | varies | **hard** | mostly presence sensors; ranging units complex |
+
+Key point: optical methods depend on **surface reflectivity** (the observed
+limitation here), ultrasonic struggles with soft/angled surfaces (carpet) and a
+wide beam, radar is immune but complex. This is why commercial desks usually
+measure the **mechanism** (encoder) rather than distance to the floor.
+
+### 12.7 Other methods (not distance / encoder / pot)
+
+- **Current-ripple counting:** a brushed DC motor's current has periodic ripple
+  (one bump per commutator segment pass). Counting ripples counts rotation using
+  **only the current sensor** (INA219) — no extra hardware; it reuses the
+  protection signal. Used commercially (car windows, actuators). Downsides: needs
+  a clean, fast-sampled current signal and careful filtering; noisy at start/stop
+  and can miss counts. Elegant as a complement, less reliable as the sole source.
+- **Back-EMF integration:** motor voltage ∝ speed; integrate to get position.
+  Dead-reckoning (drifts), fails near zero speed. Rarely sufficient alone.
+- **Limit switches / Hall + magnets:** discrete reference points, not continuous
+  position. Cheap and reliable for homing when combined with a counter.
+- **Reflective optical strip / slotted tape + sensor:** a hand-made linear
+  encoder along the column.
+- **Linear magnetic encoder (tape + head, e.g. AS5311):** proper absolute/
+  incremental linear measurement; immune to light/dirt; more mounting work.
+- **Magnetostrictive (Temposonics), LVDT:** industrial-grade, accurate, absolute
+  — but large and expensive; overkill here.
+- **Optical-mouse sensor / camera:** exotic and unreliable on a smooth column /
+  too heavy for the Nano.
+
+### 12.8 Decision guide
+
+- **Least effort, works in a normal room:** VL53L1X (drop-in distance sensor).
+- **Most reliable, commercial-standard:** AS5600 encoder on the shaft + homing by
+  current-detected end stop; presets stored as encoder positions.
+- **Least extra hardware:** current-ripple counting from the INA219 (hardest to
+  make reliable).
+- **No homing ever required:** absolute sensor (distance sensor, or linear
+  magnetic encoder); relative encoders need homing or persisted position
+  (see 12.3).
+
+### 12.9 Available parts / current status
+
+- An **INA219** (I2C shunt current/voltage monitor) is on hand. It is the
+  preferred upgrade over the IBT-2 IS line for current sensing (clean, calibrated,
+  usable even at low current) and it enables both solid overcurrent protection and
+  current-based end-stop homing. Wire it in series on the +12 V line (Vin+/Vin−),
+  logic from 5 V, SDA/SCL on A4/A5 (address 0x40, distinct from other I2C parts).
+
+---
+
+## 13. Current scope: minimum viable build (implemented)
+
+Position sensing and presets are **deferred**. The height-sensor code is archived
+in `attic/height_sensor/` (VL53L0X range was insufficient on the real floor). The
+implemented build is a **manual-mode minimum**:
+
+- **Manual up/down** (hold to move, both = stop), with soft start/stop ramp.
+- **Overcurrent protection** via the INA219 (replacing the noisy IBT-2 IS line).
+  Measured free-running current: cruise ~0.6–0.76 A at 100% speed. Thresholds:
+  sustained 1.2 A / instantaneous 1.5 A, 400 ms inrush blanking, 3-tick decision
+  debounce, plus a hard fault on INA219 shunt saturation.
+- **No presets, no closed-loop, no distance sensor** — height is set manually.
+
+### 13.1 Firmware layout
+
+Shared modules live in `src/` (`config.h`, `buttons`, `motor_driver`,
+`current_sensor` (INA219), `ramp`, `motion_controller`). PlatformIO environments:
+
+| Env | Role | Speed | Timeout | Serial |
+|---|---|---|---|---|
+| `main` | final firmware (default) | 100% | none | errors only |
+| `motor_test` | bring-up / tuning tool | 60% | 5 s | verbose per-tick log |
+| `buttons_test` | button diagnostics | — | — | events |
+| `i2c_scan` | I2C scan + device ID | — | — | scan |
+| `ina_test` | INA219 verification / logging | — | — | current log |
+
+`config.h` holds the final defaults; `motor_test` overrides speed and timeout at
+runtime via `MotionController::setSpeedLimit()` / `setMaxRunMs()`.
+
+### 13.2 Known limitation
+
+With the high-ratio gearbox the motor current barely rises under load (hard
+finger braking reached only ~0.8 A). The overcurrent limit therefore catches a
+real overload but may **not** catch a gentle drive into an end stop. Until
+end-stop handling is based on position or limit switches (section 12), the
+current limit should not be relied on as the sole end-stop protection.
+
+Position sensing (encoder / distance / etc.), persisted position, homing and
+presets remain documented above as future options to revisit once the minimum
+build is solid.

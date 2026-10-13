@@ -6,6 +6,7 @@
 // =============================================================================
 #pragma once
 #include <Arduino.h>
+#include "config.h"
 #include "motor_driver.h"
 #include "current_sensor.h"
 #include "ramp.h"
@@ -19,6 +20,14 @@ public:
   MotionController();
   void begin();
 
+  // Optional per-firmware run-time safety limit (0 = disabled). Defaults to
+  // cfg::kMaxRunMs. The final firmware disables it; the test tool sets its own.
+  void setMaxRunMs(uint32_t ms) { maxRunMs_ = ms; }
+
+  // Optional per-firmware speed limit (PWM duty, 0..cfg::kPwmMax). Defaults to
+  // cfg::kTestSpeedLimit. The test tool may lower it.
+  void setSpeedLimit(int16_t duty) { speedLimit_ = duty; }
+
   // Input from button logic: requested direction -1 (down), 0 (stop), +1 (up).
   // "up"/"down" are mapped to the PWM sign via cfg::kUpSign in tick().
   void requestDirection(int8_t dir);
@@ -29,7 +38,8 @@ public:
   MotionState state() const { return state_; }
   FaultReason fault() const { return fault_; }
   float       amps()  const { return current_.amps(); }
-  uint16_t    counts() const { return current_.lastCounts(); }
+  float       busVolts() const { return current_.busVolts(); }
+  bool        currentPresent() const { return current_.present(); }
   int16_t     output() const { return lastOutput_; }
 
 private:
@@ -47,4 +57,7 @@ private:
 
   uint32_t runStartMs_      = 0;  // when the current move started (blanking + timeout)
   uint32_t sustainedStart_  = 0;  // since when current > sustained (0 = not exceeded)
+  uint8_t  ocCount_         = 0;  // consecutive instant/saturation over-threshold ticks
+  uint32_t maxRunMs_        = cfg::kMaxRunMs;  // run-time limit (0 = disabled)
+  int16_t  speedLimit_      = cfg::kTestSpeedLimit;  // max PWM duty
 };
