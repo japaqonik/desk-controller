@@ -113,8 +113,9 @@ void MotionController::tick(uint16_t dtMs, bool anyButtonHeld) {
   if (state_ == MotionState::RampUp || state_ == MotionState::Run) {
     const uint32_t runFor = now - runStartMs_;
 
-    // Current thresholds only at cruise + after the blanking window.
-    if (state_ == MotionState::Run && runFor >= kBlankingMs) {
+    // Current thresholds only at cruise + after the blanking window, and only
+    // when protection is enabled (disabled while free-running / uncalibrated).
+    if (kCurrentProtectionEnabled && state_ == MotionState::Run && runFor >= kBlankingMs) {
       // Instantaneous limit.
       if (amps >= kCurrentInstantA) {
         enterFault(FaultReason::OverCurrentInstant);

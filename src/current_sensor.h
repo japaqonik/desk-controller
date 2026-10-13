@@ -1,8 +1,13 @@
 // =============================================================================
 // current_sensor.h - reads IS line of the active half-bridge (plan 5.3)
 // =============================================================================
+// Pipeline: oversample (average) -> median-of-N -> subtract zero offset ->
+// convert to amps -> EMA. The median rejects PWM-related spikes; the offset
+// removes the ~35-count zero reading of the filtered IS line.
+// =============================================================================
 #pragma once
 #include <Arduino.h>
+#include "config.h"
 
 class CurrentSensor {
 public:
@@ -14,11 +19,18 @@ public:
   float update(int8_t dir);
 
   float amps() const { return emaA_; }
-  uint16_t lastCounts() const { return lastCounts_; }  // raw averaged ADC counts (for calibration)
-  void  reset() { emaA_ = 0.0f; lastCounts_ = 0; }
+  uint16_t lastCounts() const { return lastCounts_; }  // median counts after offset (for calibration)
+  void  reset();
 
 private:
-  float readAmps(uint8_t pin);
-  float emaA_ = 0.0f;
-  uint16_t lastCounts_ = 0;
+  uint16_t readAveraged(uint8_t pin) const;   // oversample + average -> raw counts
+  uint16_t medianCounts(uint16_t sample);     // push into window, return median
+
+  float    emaA_ = 0.0f;
+  uint16_t lastCounts_ = 0;                    // median counts after offset subtraction
+
+  // Median window (circular buffer of averaged raw counts).
+  uint16_t window_[cfg::kCurrentMedianN] = {0};
+  uint8_t  windowFill_ = 0;                     // how many valid samples (0..N)
+  uint8_t  windowPos_  = 0;                     // next write position
 };

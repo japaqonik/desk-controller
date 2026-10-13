@@ -65,7 +65,7 @@ void setup() {
 
   Serial.println();
   Serial.println(F("=== Step 1: motor test (UP/DOWN, ramp, protection) ==="));
-  Serial.println(F("BUILD: v3 OC-only-in-RUN, adc log"));  // firmware version tag
+  Serial.println(F("BUILD: v6 current pipeline final"));  // firmware version tag
   Serial.print(F("Test speed limit: "));
   Serial.print(cfg::kTestSpeedLimit);
   Serial.print(F("/"));

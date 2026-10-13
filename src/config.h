@@ -55,13 +55,21 @@ constexpr uint16_t kTickMs = 5;   // fixed 5 ms tick (software)
 // --- CurrentSensor (plan 5.3) ---
 // IBT-2 gives ~0.1 V/A on the IS line. ADC: 5V / 1024 = 4.887 mV/step.
 // This is a STARTING value - to be calibrated with an ammeter (plan test 3).
-// NOTE: without an RC filter the IS reading is PWM-chopped noise and does not
-// track real current. Add RC filter (4.7k series + 100nF to GND near Nano)
-// before trusting these values.
-constexpr uint8_t  kCurrentOversample = 16;     // samples per read
+// NOTE: with the RC filter (4.7k + 100nF) the zero reading is a stable offset
+// (~35 counts observed) and must be SUBTRACTED. The real signal from a small
+// free-running current (~0.2 A) is near the noise floor, so IS is only reliable
+// at larger currents (jam / end-stop). Calibrate kIsVoltsPerAmp under load.
+constexpr uint8_t  kCurrentOversample = 16;     // samples per averaged read
+constexpr uint8_t  kCurrentMedianN    = 5;      // median window over averaged reads
+constexpr uint16_t kIsZeroCounts      = 35;     // ADC counts at ~zero current (offset)
 constexpr float    kAdcVoltsPerStep   = 5.0f / 1024.0f;
-constexpr float    kIsVoltsPerAmp     = 0.100f; // TO BE CALIBRATED
-constexpr float    kCurrentEmaAlpha   = 0.30f;  // EMA filter (0..1)
+constexpr float    kIsVoltsPerAmp     = 0.100f; // TO BE CALIBRATED under load
+constexpr float    kCurrentEmaAlpha   = 0.20f;  // EMA filter (0..1), lower = smoother
+
+// Current protection master switch. Keep FALSE while free-running / uncalibrated
+// so the near-noise IS reading cannot trigger a false FAULT. Set TRUE once the
+// IS->amps scale and thresholds are calibrated under load (before desk mounting).
+constexpr bool     kCurrentProtectionEnabled = false;
 
 // --- Protection thresholds (plan 5.4) ---
 // PSU max 8.33 A -> keep thresholds BELOW it so we trip before the PSU folds.
