@@ -83,4 +83,7 @@ constexpr uint32_t kMaxRunMs          = 5000; // max single-move time (test: 5 s
 // --- Watchdog ---
 // WDTO_250MS enabled in code; reset every tick.
 
+// NOTE: height-sensor (VL53L0X) constants live with the archived module in
+// attic/height_sensor/. Removed from active config since no build uses them.
+
 }  // namespace cfg

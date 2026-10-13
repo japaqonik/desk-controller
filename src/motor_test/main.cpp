@@ -54,6 +54,12 @@ const char* faultName(FaultReason f) {
 }  // namespace
 
 void setup() {
+  // Clear any pending watchdog reset and disable the WDT early. On the old
+  // bootloader a still-running WDT can trap the board in a reset loop on the
+  // next upload (so you must power-cycle). Doing this first prevents that.
+  MCUSR = 0;
+  wdt_disable();
+
   Serial.begin(115200);
   pinMode(cfg::kPinLed, OUTPUT);
   digitalWrite(cfg::kPinLed, LOW);
