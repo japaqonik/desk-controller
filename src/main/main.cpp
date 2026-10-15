@@ -93,7 +93,10 @@ void loop() {
   if (f != g_lastFault) {
     if (f != FaultReason::None) {
       Serial.print(F("FAULT: "));
-      Serial.println(faultName(f));
+      Serial.print(faultName(f));
+      Serial.print(F("  I="));
+      Serial.print(g_motion.amps(), 3);
+      Serial.println(F("A"));
     }
     g_lastFault = f;
   }

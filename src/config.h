@@ -66,11 +66,14 @@ constexpr bool     kCurrentProtectionEnabled = true;
 // --- Protection thresholds (plan 5.4) ---
 // Based on measured INA219 currents (free-running, 100% speed):
 //   cruise ~0.6-0.76 A; hard finger braking barely reached ~0.8 A (the gearbox
-//   masks load). Thresholds are set low so a real jam is still detected.
+//   masks load). Mounting reinforced, so thresholds raised by 0.5 A for margin.
+// Then the desk mechanism was attached: it needs >2 A to start moving, so
+// thresholds raised again. NOTE: these are close to the 3.2 A shunt full scale;
+// a smaller shunt (R020, ~16 A range) is planned to widen the usable range.
 constexpr uint16_t kBlankingMs        = 400;  // ignore current for first 400 ms (covers inrush)
-constexpr float    kCurrentSustainedA = 1.2f; // sustained limit
+constexpr float    kCurrentSustainedA = 2.4f; // sustained limit
 constexpr uint16_t kSustainedMs       = 200;  // ... held for > 200 ms
-constexpr float    kCurrentInstantA   = 1.5f; // instantaneous limit
+constexpr float    kCurrentInstantA   = 2.7f; // instantaneous limit (close to 3.2 A shunt FS!)
 constexpr uint8_t  kOcDebounceTicks   = 3;    // consecutive over-threshold ticks before fault
 constexpr uint32_t kMaxRunMs          = 0;    // run-time limit, 0 = disabled (final fw). Tools set their own.
 
