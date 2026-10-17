@@ -13,7 +13,7 @@
 
 enum class MotionState : uint8_t { Idle, RampUp, Run, RampDown, Fault };
 
-enum class FaultReason : uint8_t { None, OverCurrentInstant, OverCurrentSustained, RunTimeout };
+enum class FaultReason : uint8_t { None, OverCurrentInstant, OverCurrentSustained, RunTimeout, UnderVoltage };
 
 class MotionController {
 public:
@@ -58,6 +58,7 @@ private:
   uint32_t runStartMs_      = 0;  // when the current move started (blanking + timeout)
   uint32_t sustainedStart_  = 0;  // since when current > sustained (0 = not exceeded)
   uint8_t  ocCount_         = 0;  // consecutive instant/saturation over-threshold ticks
+  uint8_t  uvCount_         = 0;  // consecutive undervoltage ticks
   uint32_t maxRunMs_        = cfg::kMaxRunMs;  // run-time limit (0 = disabled)
   int16_t  speedLimit_      = cfg::kTestSpeedLimit;  // max PWM duty
 };

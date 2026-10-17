@@ -34,6 +34,7 @@ const char* faultName(FaultReason f) {
     case FaultReason::OverCurrentInstant:   return "OC_INSTANT";
     case FaultReason::OverCurrentSustained: return "OC_SUSTAINED";
     case FaultReason::RunTimeout:           return "RUN_TIMEOUT";
+    case FaultReason::UnderVoltage:         return "UNDERVOLTAGE";
   }
   return "?";
 }

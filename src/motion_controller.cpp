@@ -62,6 +62,7 @@ void MotionController::tick(uint16_t dtMs, bool anyButtonHeld) {
         runStartMs_     = now;
         sustainedStart_ = 0;
         ocCount_        = 0;
+        uvCount_        = 0;
         motor_.enable();
         ramp_.setTarget(static_cast<float>(activeDir_) * speedLimit_);
         state_ = MotionState::RampUp;
@@ -115,13 +116,19 @@ void MotionController::tick(uint16_t dtMs, bool anyButtonHeld) {
   if (state_ == MotionState::RampUp || state_ == MotionState::Run) {
     const uint32_t runFor = now - runStartMs_;
 
+    // Logical direction (up vs down) recovered from the physical direction.
+    // activeDir_ = reqDir_ * kUpSign, so reqDir_ = activeDir_ * kUpSign.
+    const bool goingUp = (static_cast<int8_t>(activeDir_ * kUpSign) > 0);
+    const float instantLimit   = goingUp ? kCurrentInstantUpA   : kCurrentInstantDownA;
+    const float sustainedLimit = goingUp ? kCurrentSustainedUpA : kCurrentSustainedDownA;
+
     // Instant/saturation condition: current beyond the instantaneous limit or
     // the shunt full scale. Debounced over kOcDebounceTicks consecutive ticks so
     // a single I2C glitch cannot trip a fault, while a real jam (which persists)
     // still trips within a few ms. Active after the blanking window.
     const bool overInstant =
         kCurrentProtectionEnabled && runFor >= kBlankingMs &&
-        (current_.saturated() || amps >= kCurrentInstantA);
+        (current_.saturated() || amps >= instantLimit);
     if (overInstant) {
       if (++ocCount_ >= kOcDebounceTicks) {
         enterFault(FaultReason::OverCurrentInstant);
@@ -134,7 +141,7 @@ void MotionController::tick(uint16_t dtMs, bool anyButtonHeld) {
     // Sustained limit: time-based (already debounced by kSustainedMs), only at
     // cruise after the blanking window.
     if (kCurrentProtectionEnabled && state_ == MotionState::Run && runFor >= kBlankingMs) {
-      if (amps >= kCurrentSustainedA) {
+      if (amps >= sustainedLimit) {
         if (sustainedStart_ == 0) sustainedStart_ = now;
         else if ((now - sustainedStart_) >= kSustainedMs) {
           enterFault(FaultReason::OverCurrentSustained);
@@ -145,6 +152,19 @@ void MotionController::tick(uint16_t dtMs, bool anyButtonHeld) {
       }
     } else {
       sustainedStart_ = 0;  // reset the counter until we are at cruise
+    }
+
+    // Undervoltage: supply rail sagging below the threshold means the PSU can't
+    // deliver the demanded current. Debounced like the OC check so a brief dip
+    // does not trip. Active after the blanking window. 0 disables the check.
+    if (kCurrentProtectionEnabled && kUnderVoltageV > 0.0f && runFor >= kBlankingMs &&
+        current_.present() && current_.busVolts() < kUnderVoltageV) {
+      if (++uvCount_ >= kOcDebounceTicks) {
+        enterFault(FaultReason::UnderVoltage);
+        return;
+      }
+    } else {
+      uvCount_ = 0;
     }
 
     // Run-time limit (0 = disabled). Always active while moving when set.

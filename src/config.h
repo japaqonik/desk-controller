@@ -64,17 +64,26 @@ constexpr float    kCurrentEmaAlpha   = 0.20f;  // EMA filter (0..1), lower = sm
 constexpr bool     kCurrentProtectionEnabled = true;
 
 // --- Protection thresholds (plan 5.4) ---
-// Based on measured INA219 currents (free-running, 100% speed):
-//   cruise ~0.6-0.76 A; hard finger braking barely reached ~0.8 A (the gearbox
-//   masks load). Mounting reinforced, so thresholds raised by 0.5 A for margin.
-// Then the desk mechanism was attached: it needs >2 A to start moving, so
-// thresholds raised again. NOTE: these are close to the 3.2 A shunt full scale;
-// a smaller shunt (R020, ~16 A range) is planned to widen the usable range.
-constexpr uint16_t kBlankingMs        = 400;  // ignore current for first 400 ms (covers inrush)
-constexpr float    kCurrentSustainedA = 2.4f; // sustained limit
-constexpr uint16_t kSustainedMs       = 200;  // ... held for > 200 ms
-constexpr float    kCurrentInstantA   = 2.7f; // instantaneous limit (close to 3.2 A shunt FS!)
+// Separate limits for up vs down: lifting fights gravity (high current),
+// lowering is gravity-assisted (lower current). Blanking covers the ~0.7 s ramp
+// so start-up inrush does not trip the limit.
+constexpr uint16_t kBlankingMs        = 1000; // ignore current for first 1 s (covers ramp + inrush)
+constexpr uint16_t kSustainedMs       = 300;  // sustained limit must hold > this
 constexpr uint8_t  kOcDebounceTicks   = 3;    // consecutive over-threshold ticks before fault
+
+// Up (lifting) - higher (lifting fights gravity).
+constexpr float    kCurrentSustainedUpA = 4.5f;
+constexpr float    kCurrentInstantUpA   = 5.0f;
+// Down (lowering) - tighter (gravity-assisted, lower normal current).
+constexpr float    kCurrentSustainedDownA = 3.5f;
+constexpr float    kCurrentInstantDownA   = 4.0f;
+
+// Undervoltage: if the INA219 bus voltage sags below this while moving (after
+// the blanking window), the supply cannot deliver the demanded current -> fault.
+// Stops the motor from stalling against a drooping rail (heating, no motion).
+// 0 = disabled. Set below the nominal 12 V but above a normal loaded dip.
+constexpr float    kUnderVoltageV     = 9.0f;
+
 constexpr uint32_t kMaxRunMs          = 0;    // run-time limit, 0 = disabled (final fw). Tools set their own.
 
 // --- Watchdog ---
@@ -84,12 +93,15 @@ constexpr uint32_t kMaxRunMs          = 0;    // run-time limit, 0 = disabled (f
 // attic/height_sensor/. Removed from active config since no build uses them.
 
 // --- Current sensor: INA219 (I2C) ---
-// Replaces the noisy IBT-2 IS line. Standard module has a 0.1 ohm shunt ->
-// +-3.2 A range at the default PGA gain. That is enough for protection if the
-// normal running current stays below it; a reading at/above full scale is treated
-// as "too much current -> fault". Calibrate with an ammeter if needed.
-constexpr uint8_t kInaAddress     = 0x40;  // default; check with i2c_scan
-constexpr float   kInaShuntOhms   = 0.100f; // module shunt resistor
-constexpr float   kInaMaxCurrentA = 3.2f;   // full-scale with 0.1 ohm @ gain 8
+// Replaces the noisy IBT-2 IS line. The module's shunt was swapped to a 0.02 ohm
+// (Viking LRP, R020, 1%, 50ppm) current-sense resistor to widen the range:
+//   max shunt voltage 320 mV (gain 8) / 0.02 ohm = +-16 A hardware range.
+// kInaMaxCurrentA sets the library LSB (resolution); keep it above the PSU
+// capability (8.33 A) with margin. kInaSaturationA is the "beyond measurable /
+// too much current" safety threshold used by the controller.
+constexpr uint8_t kInaAddress     = 0x40;   // default; check with i2c_scan
+constexpr float   kInaShuntOhms   = 0.020f; // R020 current-sense resistor
+constexpr float   kInaMaxCurrentA = 10.0f;  // measurement range for LSB (> PSU 8.33 A)
+constexpr float   kInaSaturationA = 9.0f;   // treat >= this as overcurrent (below PSU max)
 
 }  // namespace cfg

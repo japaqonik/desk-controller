@@ -38,9 +38,9 @@ float CurrentSensor::update(int8_t /*dir*/) {
   float a = g_ina.getCurrent();
   if (a < 0.0f) a = -a;
 
-  // Saturation: at/near full scale the real current exceeds what this shunt can
-  // measure. Flag it so the controller can treat it as an overcurrent fault.
-  saturated_ = (a >= (kInaMaxCurrentA - 0.1f));
+  // Overcurrent ceiling: current beyond the safety limit (below PSU max and the
+  // shunt's hardware range). Flag it so the controller trips a hard fault.
+  saturated_ = (a >= kInaSaturationA);
 
   emaA_ += kCurrentEmaAlpha * (a - emaA_);
   busV_  = g_ina.getBusVoltage();

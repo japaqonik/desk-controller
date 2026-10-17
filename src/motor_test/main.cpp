@@ -48,6 +48,7 @@ const char* faultName(FaultReason f) {
     case FaultReason::OverCurrentInstant:   return "OC_INSTANT";
     case FaultReason::OverCurrentSustained: return "OC_SUSTAINED";
     case FaultReason::RunTimeout:           return "RUN_TIMEOUT";
+    case FaultReason::UnderVoltage:         return "UNDERVOLTAGE";
   }
   return "?";
 }
@@ -66,21 +67,23 @@ void setup() {
 
   g_buttons.begin();
   g_motion.begin();
-  // Test tool runs slower and keeps a safety timeout (the final fw does neither).
-  g_motion.setSpeedLimit(static_cast<int16_t>(cfg::kPwmMax * 0.60f));
+  // Test/observability tool: full speed with verbose logging, plus a safety
+  // timeout (the final fw runs at full speed too but logs errors only and has
+  // no timeout).
+  g_motion.setSpeedLimit(static_cast<int16_t>(cfg::kPwmMax * 1.00f));
   g_motion.setMaxRunMs(5000);
 
   g_lastTick = millis();
 
   Serial.println();
   Serial.println(F("=== motor_test tool (UP/DOWN, ramp, protection) ==="));
-  Serial.println(F("BUILD: v9 tool 60% + timeout"));  // firmware version tag
+  Serial.println(F("BUILD: v14 blank 1s + undervolt"));  // firmware version tag
   Serial.print(F("INA219: "));
   Serial.println(g_motion.currentPresent() ? F("OK") : F("NOT FOUND (current=0)"));
   Serial.print(F("Current protection: "));
   Serial.println(cfg::kCurrentProtectionEnabled ? F("ENABLED") : F("disabled"));
   Serial.print(F("Test speed limit: "));
-  Serial.print(static_cast<int16_t>(cfg::kPwmMax * 0.60f));
+  Serial.print(static_cast<int16_t>(cfg::kPwmMax * 1.00f));
   Serial.print(F("/"));
   Serial.println(cfg::kPwmMax);
   Serial.println(F("UP=D2 up, DOWN=D3 down, both=stop. Motor should be FREE-RUNNING."));
