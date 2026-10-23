@@ -120,4 +120,21 @@ constexpr float   kInaShuntOhms   = 0.020f; // R020 current-sense resistor
 constexpr float   kInaMaxCurrentA = 10.0f;  // measurement range for LSB (> PSU 8.33 A)
 constexpr float   kInaSaturationA = 9.0f;   // treat >= this as overcurrent (below PSU max)
 
+// --- Closed-loop "go to position" (plan 7) ---
+// Position = raw sonar distance to floor (mm). Higher desk = larger distance
+// (sensor looks down). The desk is SLOW (gearmotor ~100 rpm + mechanism ratio),
+// so the progress check uses a long window. Moves abort on no-progress (wrong
+// direction or stall) and stale sensor; current protection is the backup.
+constexpr uint16_t kGotoDeadbandMm   = 5;    // stop when |target - dist| <= this (> sonar noise)
+constexpr uint16_t kGotoSlowZoneMm   = 25;   // start slowing within this of target
+constexpr int16_t  kGotoMinDuty      = static_cast<int16_t>(kPwmMax * 0.55f); // slow-approach floor (keep torque)
+constexpr int16_t  kGotoMaxDuty      = static_cast<int16_t>(kPwmMax * 1.00f); // full speed (desk is slow anyway)
+constexpr uint16_t kGotoGraceMs      = 2000; // ignore progress check during initial slow ramp
+constexpr uint16_t kGotoProgressMm   = 5;    // "progress" = |err| improved by >= this
+constexpr uint16_t kGotoProgressWindowMs = 4000; // must improve >=5mm within this window (desk is slow)
+constexpr uint16_t kGotoStallMs      = 600;  // driving but distance not changing -> fault
+constexpr uint16_t kGotoStallMinMm   = 2;    // "changing" means >= this much movement
+constexpr uint16_t kGotoSensorMaxAgeMs = 300;// sensor older than this -> stop (stale)
+constexpr uint32_t kGotoTimeoutMs    = 30000;// absolute move timeout
+
 }  // namespace cfg

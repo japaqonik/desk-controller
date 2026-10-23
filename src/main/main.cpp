@@ -35,6 +35,10 @@ const char* faultName(FaultReason f) {
     case FaultReason::OverCurrentSustained: return "OC_SUSTAINED";
     case FaultReason::RunTimeout:           return "RUN_TIMEOUT";
     case FaultReason::UnderVoltage:         return "UNDERVOLTAGE";
+    case FaultReason::GoToWrongDir:         return "GOTO_WRONGDIR";
+    case FaultReason::GoToStall:            return "GOTO_STALL";
+    case FaultReason::GoToStale:            return "GOTO_STALE";
+    case FaultReason::GoToTimeout:          return "GOTO_TIMEOUT";
   }
   return "?";
 }

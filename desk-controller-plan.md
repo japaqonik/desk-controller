@@ -3,11 +3,12 @@
 Arduino Nano (ATmega328P) + IBT-2 (BTS7960) + 12 V / 8 A PSU + VL53L0X-class distance sensor + 4 buttons.
 Position comes from the distance sensor only (no dead-reckoning). Current sensing is used for protection.
 
-> **Current scope (see section 13):** the implemented target is a *minimum build*
-> — manual up/down with overcurrent protection via an **INA219** (integrated and
-> working), and **no presets / no position sensing**. The distance-sensor work is
-> archived (range too short on the real floor). The original sections below (6–9)
-> and the appendix (section 12) describe deferred/future functionality.
+> **Current status (see section 13):** manual up/down with INA219 overcurrent +
+> undervoltage protection is complete; closed-loop "go to position" works with an
+> **HC-SR04 ultrasonic** sensor (the VL53L0X was too short-range and is archived).
+> Presets (EEPROM) and integrating go-to into the final firmware are next. The
+> original sections 6–9 (VL53L0X-specific) and the appendix (section 12) are kept
+> for reference / future options.
 
 ---
 
@@ -404,43 +405,59 @@ measure the **mechanism** (encoder) rather than distance to the floor.
 
 ---
 
-## 13. Current scope: minimum viable build (implemented)
+## 13. Current scope and progress (implemented)
 
-Position sensing and presets are **deferred**. The height-sensor code is archived
-in `attic/height_sensor/` (VL53L0X range was insufficient on the real floor). The
-implemented build is a **manual-mode minimum**:
+The VL53L0X ToF sensor was too short-range on the real floor and is archived in
+`attic/height_sensor/`. An **HC-SR04 ultrasonic** sensor replaced it (immune to
+floor color; timed via a pin-change interrupt so the loop never blocks).
 
-- **Manual up/down** (hold to move, both = stop), with soft start/stop ramp.
-- **Overcurrent protection** via the INA219 (replacing the noisy IBT-2 IS line).
-  Measured free-running current: cruise ~0.6–0.76 A at 100% speed. Thresholds:
-  sustained 1.2 A / instantaneous 1.5 A, 400 ms inrush blanking, 3-tick decision
-  debounce, plus a hard fault on INA219 shunt saturation.
-- **No presets, no closed-loop, no distance sensor** — height is set manually.
+Implemented and tested on the assembled desk:
+
+- **Manual up/down** (hold to move, both = stop) with soft start/stop ramp.
+- **Current sensing via INA219** with a 0.02 Ω (R020) shunt — clean readings
+  across the range. Separate up/down thresholds (lifting fights gravity and draws
+  more), inrush blanking, decision debounce, hard fault on shunt saturation, and
+  an **undervoltage** fault (catches a sagging supply).
+- **`kUpSign`** set so "up" matches the wiring (desk up = larger sonar distance).
+- **Closed-loop "go to position"** (in `closed_loop_test`): drives to a target
+  distance, full speed far away, proportional slow-down within a slow zone, stops
+  within a small deadband. Aborts on **no-progress** (wrong direction or stall,
+  trend-based so it is robust to a few mm of sonar noise), **stale sensor**, and a
+  **move timeout**; any button press cancels. Verified: reaches target and holds.
+
+Still to do: **EEPROM presets** (store/recall), FN key for presets #2–#4, and
+**integrating go-to + presets into the final `main` firmware** (today they live in
+`closed_loop_test`).
 
 ### 13.1 Firmware layout
 
 Shared modules live in `src/` (`config.h`, `buttons`, `motor_driver`,
-`current_sensor` (INA219), `ramp`, `motion_controller`). PlatformIO environments:
+`current_sensor` (INA219), `distance_sensor` (HC-SR04), `ramp`,
+`motion_controller`). PlatformIO environments:
 
-| Env | Role | Speed | Timeout | Serial |
-|---|---|---|---|---|
-| `main` | final firmware (default) | 100% | none | errors only |
-| `motor_test` | bring-up / tuning tool | 60% | 5 s | verbose per-tick log |
-| `buttons_test` | button diagnostics | — | — | events |
-| `i2c_scan` | I2C scan + device ID | — | — | scan |
-| `ina_test` | INA219 verification / logging | — | — | current log |
+| Env | Role |
+|---|---|
+| `main` | final firmware (default): manual mode, 100%, Serial errors only |
+| `motor_test` | motor bring-up / tuning: verbose per-tick log, run-time timeout |
+| `closed_loop_test` | sonar go-to-position test (manual + P1 drives to a target) |
+| `sonar_test` | HC-SR04 distance logging |
+| `ina_test` | INA219 verification / current logging |
+| `buttons_test` | button diagnostics |
+| `i2c_scan` | I2C scan + device ID |
 
-`config.h` holds the final defaults; `motor_test` overrides speed and timeout at
-runtime via `MotionController::setSpeedLimit()` / `setMaxRunMs()`.
+`config.h` holds the defaults; test tools override speed/timeout at runtime via
+`MotionController::setSpeedLimit()` / `setMaxRunMs()`.
 
-### 13.2 Known limitation
+### 13.2 Notes / limitations
 
-With the high-ratio gearbox the motor current barely rises under load (hard
-finger braking reached only ~0.8 A). The overcurrent limit therefore catches a
-real overload but may **not** catch a gentle drive into an end stop. Until
-end-stop handling is based on position or limit switches (section 12), the
-current limit should not be relied on as the sole end-stop protection.
-
-Position sensing (encoder / distance / etc.), persisted position, homing and
-presets remain documented above as future options to revisit once the minimum
-build is solid.
+- **Slow desk:** gearmotor (~100 rpm) plus a mechanism ratio make the desk move
+  slowly, so the go-to no-progress check uses a long (~4 s) window and the current
+  barely rises under normal load.
+- **Current as end-stop:** because current barely rises, the overcurrent limit
+  catches a hard overload (e.g. hitting a hard stop) but not a gentle approach.
+  Soft limits are not implemented; current is the backup end-stop.
+- **Start-up current peak:** starting under load (especially from the bottom)
+  shows a brief current peak and a mechanical "jolt"; the ramp is shared with
+  manual mode. Could be softened later with a slower ramp.
+- Encoder / persisted-position / homing options from section 12 remain future
+  work if ultrasonic positioning proves insufficient.
