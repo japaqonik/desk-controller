@@ -4,11 +4,11 @@ Arduino Nano (ATmega328P) + IBT-2 (BTS7960) + 12 V / 8 A PSU + VL53L0X-class dis
 Position comes from the distance sensor only (no dead-reckoning). Current sensing is used for protection.
 
 > **Current status (see section 13):** manual up/down with INA219 overcurrent +
-> undervoltage protection is complete; closed-loop "go to position" works with an
-> **HC-SR04 ultrasonic** sensor (the VL53L0X was too short-range and is archived).
-> Presets (EEPROM) and integrating go-to into the final firmware are next. The
-> original sections 6–9 (VL53L0X-specific) and the appendix (section 12) are kept
-> for reference / future options.
+> undervoltage protection is complete and in use. Closed-loop go-to and EEPROM
+> presets were built and tested with an HC-SR04 sonar but are **archived**: the
+> sonar's wide cone is fooled by objects under the desk. Next step is choosing a
+> reliable position source (narrow-beam LiDAR or encoder, section 12). Sections
+> 6–9 (VL53L0X-specific) are kept for reference.
 
 ---
 
@@ -411,36 +411,41 @@ The VL53L0X ToF sensor was too short-range on the real floor and is archived in
 `attic/height_sensor/`. An **HC-SR04 ultrasonic** sensor replaced it (immune to
 floor color; timed via a pin-change interrupt so the loop never blocks).
 
-Implemented and tested on the assembled desk:
+Implemented and in use on the assembled desk (`main`):
 
 - **Manual up/down** (hold to move, both = stop) with soft start/stop ramp.
 - **Current sensing via INA219** with a 0.02 Ω (R020) shunt — clean readings
   across the range. Separate up/down thresholds (lifting fights gravity and draws
   more), inrush blanking, decision debounce, hard fault on shunt saturation, and
   an **undervoltage** fault (catches a sagging supply).
-- **`kUpSign`** set so "up" matches the wiring (desk up = larger sonar distance).
-- **Closed-loop "go to position"** (in `closed_loop_test`): drives to a target
-  distance, full speed far away, proportional slow-down within a slow zone, stops
-  within a small deadband. Aborts on **no-progress** (wrong direction or stall,
-  trend-based so it is robust to a few mm of sonar noise), **stale sensor**, and a
-  **move timeout**; any button press cancels. Verified: reaches target and holds.
+- **`kUpSign`** set so "up" matches the wiring.
 
-Still to do: **EEPROM presets** (store/recall), FN key for presets #2–#4, and
-**integrating go-to + presets into the final `main` firmware** (today they live in
-`closed_loop_test`).
+Built, tested, then **archived** in `attic/sonar_goto/`:
+
+- **HC-SR04 sonar** driver (pin-change-interrupt echo timing, non-blocking).
+  Stable at rest, but its ~30 cm floor footprint picks up objects under the desk
+  (a hanging backpack changed 588 mm to 420 mm). Not safe for automatic moves.
+- **Closed-loop go-to** (`closed_loop_test`): reached the target and held; safety
+  on no-progress (trend-based, robust to sensor noise), stale sensor, timeout,
+  button cancel. The go-to logic itself stays in `MotionController` (sensor-
+  independent) together with the `kGoto*` constants.
+- **EEPROM presets** (`settings.*`, `preset_test`): 4 slots with magic + CRC;
+  click = go, long press = save. `Buttons` click / long-press stays in `src/`.
+
+Next: pick a position source that is immune to objects under the desk — a
+narrow-beam 1D LiDAR (TF-Luna / TFmini-S, ~2° beam, ~2 cm spot at 60 cm) or a
+shaft encoder (AS5600) with current-based homing (section 12). Add the plan 6.3
+check (refuse a move if the resting reading jumped) before re-enabling presets.
 
 ### 13.1 Firmware layout
 
 Shared modules live in `src/` (`config.h`, `buttons`, `motor_driver`,
-`current_sensor` (INA219), `distance_sensor` (HC-SR04), `ramp`,
-`motion_controller`). PlatformIO environments:
+`current_sensor` (INA219), `ramp`, `motion_controller`). PlatformIO environments:
 
 | Env | Role |
 |---|---|
 | `main` | final firmware (default): manual mode, 100%, Serial errors only |
 | `motor_test` | motor bring-up / tuning: verbose per-tick log, run-time timeout |
-| `closed_loop_test` | sonar go-to-position test (manual + P1 drives to a target) |
-| `sonar_test` | HC-SR04 distance logging |
 | `ina_test` | INA219 verification / current logging |
 | `buttons_test` | button diagnostics |
 | `i2c_scan` | I2C scan + device ID |

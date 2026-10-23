@@ -27,18 +27,8 @@ constexpr uint8_t kPinLed = 13;    // on-board LED
 // The PWR and RX/TX LEDs are hardwired and cannot be disabled in firmware.
 constexpr bool    kLedEnabled = false;
 
-// --- Distance sensor: HC-SR04 ultrasonic ---
-// TRIG = D12 (output pulse), ECHO = D11 (input, pulse width ~ distance).
-// Distance[mm] = echo_us * 0.343 / 2  (speed of sound ~343 m/s).
-// Ultrasonic is immune to floor color (unlike ToF) but can be noisy / lose echo
-// on soft or angled surfaces - filtering and validity checks matter.
-constexpr uint8_t  kPinSonarTrig   = 12;
-constexpr uint8_t  kPinSonarEcho   = 11;
-constexpr uint16_t kSonarTimeoutUs = 25000;  // ~4.3 m max wait; no-echo => invalid
-constexpr uint8_t  kSonarMedianN   = 5;      // median window
-constexpr float    kSonarEmaAlpha  = 0.40f;  // light EMA after median
-constexpr uint16_t kSonarMinMm     = 20;     // discard readings below this
-constexpr uint16_t kSonarMaxMm     = 4000;   // discard readings above this
+// NOTE: HC-SR04 constants (TRIG=D12, ECHO=D11, timeouts, filtering) are listed in
+// attic/sonar_goto/README.md together with the archived driver.
 
 // --- PWM (Timer1, fast PWM, TOP = ICR1) ---
 // 16 MHz / (ICR1+1) = frequency. 16e6/800 = 20 kHz.
