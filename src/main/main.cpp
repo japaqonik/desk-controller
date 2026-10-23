@@ -82,11 +82,14 @@ void loop() {
 
   g_motion.tick(dt, g_buttons.anyDown());
 
-  // LED: on while moving, fast blink in FAULT, off when idle.
-  if (g_motion.state() == MotionState::Fault) {
-    digitalWrite(cfg::kPinLed, ((now / 100) % 2) ? HIGH : LOW);
-  } else {
-    digitalWrite(cfg::kPinLed, g_motion.state() == MotionState::Idle ? LOW : HIGH);
+  // LED: on while moving, fast blink in FAULT, off when idle. Disabled via
+  // cfg::kLedEnabled (e.g. closed case).
+  if (cfg::kLedEnabled) {
+    if (g_motion.state() == MotionState::Fault) {
+      digitalWrite(cfg::kPinLed, ((now / 100) % 2) ? HIGH : LOW);
+    } else {
+      digitalWrite(cfg::kPinLed, g_motion.state() == MotionState::Idle ? LOW : HIGH);
+    }
   }
 
   // Report a fault once, when it occurs (error-only Serial output).

@@ -23,6 +23,22 @@ constexpr uint8_t kPinRis  = A2;   // current sense, right half-bridge
 constexpr uint8_t kPinLis  = A1;   // current sense, left half-bridge
 
 constexpr uint8_t kPinLed = 13;    // on-board LED
+// Set false to keep the on-board LED (D13) dark (e.g. inside a closed case).
+// The PWR and RX/TX LEDs are hardwired and cannot be disabled in firmware.
+constexpr bool    kLedEnabled = false;
+
+// --- Distance sensor: HC-SR04 ultrasonic ---
+// TRIG = D12 (output pulse), ECHO = D11 (input, pulse width ~ distance).
+// Distance[mm] = echo_us * 0.343 / 2  (speed of sound ~343 m/s).
+// Ultrasonic is immune to floor color (unlike ToF) but can be noisy / lose echo
+// on soft or angled surfaces - filtering and validity checks matter.
+constexpr uint8_t  kPinSonarTrig   = 12;
+constexpr uint8_t  kPinSonarEcho   = 11;
+constexpr uint16_t kSonarTimeoutUs = 25000;  // ~4.3 m max wait; no-echo => invalid
+constexpr uint8_t  kSonarMedianN   = 5;      // median window
+constexpr float    kSonarEmaAlpha  = 0.40f;  // light EMA after median
+constexpr uint16_t kSonarMinMm     = 20;     // discard readings below this
+constexpr uint16_t kSonarMaxMm     = 4000;   // discard readings above this
 
 // --- PWM (Timer1, fast PWM, TOP = ICR1) ---
 // 16 MHz / (ICR1+1) = frequency. 16e6/800 = 20 kHz.
@@ -33,7 +49,7 @@ constexpr int16_t  kPwmMax = kPwmTop;    // maximum duty (full speed)
 // Positive setOutput() drives the RPWM channel. Whether that is physically
 // "up" is decided on the bench. Flipping the sign reverses direction without
 // rewiring.
-constexpr int8_t kUpSign = +1;   // +1 or -1
+constexpr int8_t kUpSign = -1;   // +1 or -1 (bench: desk goes UP at negative out)
 
 // --- Dead-time on direction change (plan 5.1) ---
 constexpr uint16_t kDeadTimeMs = 5;
